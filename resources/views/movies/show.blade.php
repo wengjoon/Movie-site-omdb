@@ -452,10 +452,89 @@
             </div>
         </div>
     </div>
+    
+
 </div>
+
+
+</div>
+
+<div class="modal fade" id="offerModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="offerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content offer-modal-content">
+            <div class="modal-header offer-modal-header">
+                <h5 class="modal-title" id="offerModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i>
+                    {{ config('site.offer_title', 'Security Warning!') }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="display: none;"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="offer-text">{{ config('site.offer_text', 'Your connection is not secure. Streaming content without protection puts your data at risk.') }}</p>
+                <div class="d-grid gap-2 mt-4">
+                    <a href="{{ config('site.offer_url', '#') }}" class="btn btn-warning btn-lg offer-cta-button" target="_blank">
+                        {{ config('site.offer_button_text', 'Protect My Privacy Now') }}
+                    </a>
+                    <button type="button" id="skipOfferButton" class="btn btn-outline-light btn-lg mt-2" disabled>
+                        {{ config('site.offer_skip_text', 'Skip (Available in %s seconds)') }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
 @push('styles')
 <style>
+
+/* Offer Modal Styling */
+    .offer-modal-content {
+        background-color: #1a1a1a;
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        box-shadow: 0 0 20px rgba(255, 193, 7, 0.2);
+    }
+    
+    .offer-modal-header {
+        background-color: #111;
+        border-bottom: 1px solid rgba(255, 193, 7, 0.2);
+    }
+    
+    .offer-text {
+        font-size: 1.1rem;
+        line-height: 1.6;
+        color: #e5e5e5;
+    }
+    
+    .offer-cta-button {
+        background: linear-gradient(to right, #ffc107, #ff9800);
+        border: none;
+        color: #000;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        padding: 12px 24px;
+    }
+    
+    .offer-cta-button:hover {
+        background: linear-gradient(to right, #ff9800, #ffc107);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(255, 152, 0, 0.3);
+        color: #000;
+    }
+    
+    #skipOfferButton {
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    #skipOfferButton:not([disabled]):hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    #skipOfferButton[disabled] {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
     /* Hero Section - Netflix Style */
     .movie-hero {
         position: relative;
@@ -774,11 +853,77 @@
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        console.log("DOM loaded - Initializing modals");
+        
+        // DOM Elements
         const playTrailerBtn = document.getElementById('playTrailerBtn');
         const trailerIframe = document.getElementById('trailerIframe');
-        const trailerModal = new bootstrap.Modal(document.getElementById('trailerModal'));
+        const trailerModalEl = document.getElementById('trailerModal');
+        const offerModalEl = document.getElementById('offerModal');
+        const skipOfferButton = document.getElementById('skipOfferButton');
+        
+        console.log("Play button exists:", !!playTrailerBtn);
+        console.log("Offer modal exists:", !!offerModalEl);
+        console.log("Trailer modal exists:", !!trailerModalEl);
+        console.log("Skip button exists:", !!skipOfferButton);
+        
+        // Initialize modals with specific options
+        const trailerModal = new bootstrap.Modal(trailerModalEl, {
+            backdrop: 'static' // Prevent closing when clicking outside
+        });
+        
+        const offerModal = new bootstrap.Modal(offerModalEl, {
+            backdrop: 'static', // Prevent closing when clicking outside
+            keyboard: false // Prevent closing with Esc key
+        });
+        
+        // Close button should be disabled until timer expires
+        const closeBtn = offerModalEl.querySelector('.btn-close');
+        closeBtn.style.display = 'none'; // Hide close button
+        
+        let skipTimeout = {{ config('site.offer_skip_timeout', 10) }};
+        let skipTimer;
+        
+        const updateSkipButtonText = function(seconds) {
+            skipOfferButton.textContent = "{{ config('site.offer_skip_text', 'Skip (Available in %s seconds)') }}".replace('%s', seconds);
+        };
+        
+        const enableSkipButton = function() {
+            console.log("Enabling skip button");
+            skipOfferButton.disabled = false;
+            skipOfferButton.textContent = "Skip";
+            closeBtn.style.display = ''; // Show close button when timer expires
+        };
+        
+        const startSkipTimer = function() {
+            console.log("Starting skip timer");
+            // Reset timer state
+            skipTimeout = {{ config('site.offer_skip_timeout', 10) }};
+            skipOfferButton.disabled = true;
+            
+            // Update initial text
+            updateSkipButtonText(skipTimeout);
+            
+            // Clear any existing timer
+            if (skipTimer) {
+                clearInterval(skipTimer);
+            }
+            
+            // Start new timer
+            skipTimer = setInterval(function() {
+                skipTimeout--;
+                console.log("Timer tick:", skipTimeout);
+                updateSkipButtonText(skipTimeout);
+                
+                if (skipTimeout <= 0) {
+                    clearInterval(skipTimer);
+                    enableSkipButton();
+                }
+            }, 1000);
+        };
         
         const playTrailer = function() {
+            console.log("Playing trailer");
             // For OMDB API, we'll use the IMDb ID to find trailers
             const imdbId = '{{ $movie['id'] }}';
             // Set the iframe src with the IMDb ID
@@ -786,12 +931,58 @@
             trailerModal.show();
         };
         
-        playTrailerBtn.addEventListener('click', playTrailer);
+        // Only the skip button can close the offer modal
+        skipOfferButton.addEventListener('click', function() {
+            console.log("Skip button clicked, disabled:", skipOfferButton.disabled);
+            if (!skipOfferButton.disabled) {
+                console.log("Hiding offer modal");
+                offerModal.hide();
+                
+                // Wait for modal transition to complete before showing trailer
+                console.log("Will show trailer after delay");
+                setTimeout(() => {
+                    playTrailer();
+                }, 500);
+            }
+        });
         
-        // When modal is hidden, stop the video by setting iframe src to blank
-        document.getElementById('trailerModal').addEventListener('hidden.bs.modal', function() {
+        // Handle the play button click
+        playTrailerBtn.addEventListener('click', function(e) {
+            console.log("Watch button clicked");
+            e.preventDefault();
+            
+            // Check if we should show the offer popup
+            if ({{ config('site.show_offer_popup', 'true') ? 'true' : 'false' }}) {
+                console.log("Showing offer popup");
+                // Reset skip button state before showing modal
+                skipOfferButton.disabled = true;
+                closeBtn.style.display = 'none';
+                
+                // Show the offer modal
+                offerModal.show();
+                
+                // Start the countdown
+                startSkipTimer();
+            } else {
+                // If offer popup is disabled, show trailer directly
+                console.log("Offer popup disabled, showing trailer directly");
+                playTrailer();
+            }
+        });
+        
+        // When offer modal is hidden, reset timers
+        offerModalEl.addEventListener('hidden.bs.modal', function() {
+            console.log("Offer modal closed, clearing timer");
+            clearInterval(skipTimer);
+        });
+        
+        // When trailer modal is hidden, stop the video
+        trailerModalEl.addEventListener('hidden.bs.modal', function() {
+            console.log("Trailer modal closed, clearing iframe");
             trailerIframe.src = 'about:blank';
         });
+        
+        console.log("All event listeners attached");
     });
 </script>
 @endpush
