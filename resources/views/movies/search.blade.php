@@ -30,8 +30,21 @@
                 <div class="col">
                     <div class="movie-card h-100">
                         <a href="{{ route('movies.show', ['id' => $movie['id']]) }}" class="text-decoration-none">
-                            @if($movie['poster_path'])
-                                <img src="https://image.tmdb.org/t/p/w500{{ $movie['poster_path'] }}" class="card-img-top" alt="{{ $movie['title'] }} poster - Watch on 123 Movies Pro" loading="lazy">
+                            @php
+                                $posterUrl = '';
+                                if(!empty($movie['poster_path']) && strpos($movie['poster_path'], 'http') === 0) {
+                                    // OMDB full URL
+                                    $posterUrl = $movie['poster_path'];
+                                } elseif(!empty($movie['poster_path'])) {
+                                    // TMDB path
+                                    $posterUrl = 'https://image.tmdb.org/t/p/w500' . $movie['poster_path'];
+                                } else {
+                                    $posterUrl = '';
+                                }
+                            @endphp
+                            
+                            @if(!empty($posterUrl))
+                                <img src="{{ $posterUrl }}" class="card-img-top" alt="{{ $movie['title'] }} poster - Watch on 123 Movies Pro" loading="lazy">
                             @else
                                 <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center">
                                     <span class="text-light"><i class="bi bi-film" style="font-size: 3rem;"></i></span>
@@ -40,12 +53,12 @@
                             <div class="card-body">
                                 <h5 class="movie-title" title="{{ $movie['title'] }}">{{ $movie['title'] }}</h5>
                                 @if(isset($movie['release_date']) && !empty($movie['release_date']))
-    <p class="movie-year">{{ substr($movie['release_date'], 0, 4) }}</p>
-@endif
+                                    <p class="movie-year">{{ substr($movie['release_date'], 0, 4) }}</p>
+                                @endif
                                 <p class="movie-rating">
-    <i class="bi bi-star-fill me-1"></i> 
-    {{ isset($movie['vote_average']) ? number_format($movie['vote_average'], 1) : 'N/A' }}/10
-</p>
+                                    <i class="bi bi-star-fill me-1"></i> 
+                                    {{ isset($movie['vote_average']) ? number_format($movie['vote_average'], 1) : 'N/A' }}/10
+                                </p>
                                 <div class="movie-hover-info">
                                     <div class="hover-buttons">
                                         <a href="{{ route('movies.show', ['id' => $movie['id']]) }}" class="btn btn-sm btn-danger">

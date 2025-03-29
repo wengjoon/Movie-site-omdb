@@ -87,7 +87,7 @@
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Fetch popular movies from TMDB
+        // Fetch popular movies from OMDB
         fetchPopularMovies();
     });
     
@@ -119,21 +119,51 @@
         
         let html = '';
         moviesToShow.forEach(movie => {
-            const posterUrl = movie.poster_path 
-                ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` 
-                : '/images/no-poster.jpg';
+            // Determine poster URL (handling both OMDB and TMDB formats)
+            let posterUrl;
+            if (movie.poster_path && movie.poster_path.startsWith('http')) {
+                // OMDB full URL
+                posterUrl = movie.poster_path;
+            } else if (movie.poster_path) {
+                // TMDB path
+                posterUrl = 'https://image.tmdb.org/t/p/w500' + movie.poster_path;
+            } else if (movie.Poster && movie.Poster !== 'N/A') {
+                // OMDB Poster field
+                posterUrl = movie.Poster;
+            } else {
+                posterUrl = '/images/no-poster.jpg';
+            }
+            
+            // Get the correct movie ID
+            const movieId = movie.id || movie.imdbID;
+            
+            // Get year from different possible formats
+            let year = '';
+            if (movie.release_date) {
+                year = movie.release_date.substr(0, 4);
+            } else if (movie.Year) {
+                year = movie.Year;
+            }
+            
+            // Get rating from different possible formats
+            let rating = 'N/A';
+            if (movie.vote_average) {
+                rating = parseFloat(movie.vote_average).toFixed(1);
+            } else if (movie.imdbRating) {
+                rating = parseFloat(movie.imdbRating).toFixed(1);
+            }
             
             html += `
                 <div class="col-6 col-md-3">
-                    <a href="/movie/${movie.id}" class="text-decoration-none">
+                    <a href="/movie/${movieId}" class="text-decoration-none">
                         <div class="movie-suggestion-card">
-                            <img src="${posterUrl}" class="w-100 movie-suggestion-img" alt="${movie.title}" loading="lazy">
+                            <img src="${posterUrl}" class="w-100 movie-suggestion-img" alt="${movie.title || movie.Title}" loading="lazy">
                             <div class="p-3">
-                                <h5 class="movie-suggestion-title">${movie.title}</h5>
+                                <h5 class="movie-suggestion-title">${movie.title || movie.Title}</h5>
                                 <div class="d-flex justify-content-between">
-                                    <span class="text-muted">${movie.release_date ? movie.release_date.substr(0, 4) : ''}</span>
+                                    <span class="text-muted">${year}</span>
                                     <span class="movie-suggestion-rating">
-                                        <i class="bi bi-star-fill me-1"></i>${movie.vote_average.toFixed(1)}
+                                        <i class="bi bi-star-fill me-1"></i>${rating}
                                     </span>
                                 </div>
                             </div>
@@ -150,35 +180,35 @@
         // Hide loading spinner
         document.querySelector('.loading-spinner').style.display = 'none';
         
-        // Fallback movie data in case API fails
+        // Fallback movie data in case API fails - Using IMDB IDs for OMDB compatibility
         const fallbackMovies = [
             {
-                id: '299534',
-                title: 'Avengers: Endgame',
-                poster_path: '/or06FN3Dka5tukK1e9sl16pB3iy.jpg',
-                release_date: '2019-04-24',
-                vote_average: 8.3
+                id: 'tt0111161',
+                title: 'The Shawshank Redemption',
+                poster_path: 'https://m.media-amazon.com/images/M/MV5BMDFkYTc0MGEtZmNhMC00ZDIzLWFmNTEtODM1ZmRlYWMwMWFmXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_SX300.jpg',
+                release_date: '1994-09-23',
+                vote_average: 9.3
             },
             {
-                id: '299536',
-                title: 'Avengers: Infinity War',
-                poster_path: '/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg',
-                release_date: '2018-04-25',
-                vote_average: 8.3
+                id: 'tt0068646',
+                title: 'The Godfather',
+                poster_path: 'https://m.media-amazon.com/images/M/MV5BM2MyNjYxNmUtYTAwNi00MTYxLWJmNWYtYzZlODY3ZTk3OTFlXkEyXkFqcGdeQXVyNzkwMjQ5NzM@._V1_SX300.jpg',
+                release_date: '1972-03-24',
+                vote_average: 9.2
             },
             {
-                id: '505642',
-                title: 'Black Panther: Wakanda Forever',
-                poster_path: '/sv1xJUazXeYqALzczSZ3O6nkH75.jpg',
-                release_date: '2022-11-09',
-                vote_average: 7.3
+                id: 'tt0468569',
+                title: 'The Dark Knight',
+                poster_path: 'https://m.media-amazon.com/images/M/MV5BMTMxNTMwODM0NF5BMl5BanBnXkFtZTcwODAyMTk2Mw@@._V1_SX300.jpg',
+                release_date: '2008-07-18',
+                vote_average: 9.0
             },
             {
-                id: '634649',
-                title: 'Spider-Man: No Way Home',
-                poster_path: '/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg',
-                release_date: '2021-12-15',
-                vote_average: 8.0
+                id: 'tt0050083',
+                title: '12 Angry Men',
+                poster_path: 'https://m.media-amazon.com/images/M/MV5BMWU4N2FjNzYtNTVkNC00NzQ0LTg0MjAtYTJlMjFhNGUxZDFmXkEyXkFqcGdeQXVyNjc1NTYyMjg@._V1_SX300.jpg',
+                release_date: '1957-04-10',
+                vote_average: 9.0
             }
         ];
         

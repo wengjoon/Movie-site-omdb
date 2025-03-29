@@ -23,17 +23,17 @@ class PrefetchMovies extends Command
     protected $description = 'Prefetch and cache popular and top-rated movies';
 
     /**
-     * The TMDB service
+     * The movie service
      */
-    protected $tmdbService;
+    protected $movieService;
 
     /**
      * Create a new command instance.
      */
-    public function __construct(TmdbService $tmdbService)
+    public function __construct(TmdbService $movieService)
     {
         parent::__construct();
-        $this->tmdbService = $tmdbService;
+        $this->movieService = $movieService;
     }
 
     /**
@@ -74,8 +74,13 @@ class PrefetchMovies extends Command
         $this->info('Prefetching popular movies...');
         $this->output->progressStart($pages);
         
+        // Use common search terms to simulate popular movies
+        $popularTerms = ['action', 'adventure', 'comedy', 'drama', 'sci-fi', 'thriller'];
+        
         for ($page = 1; $page <= $pages; $page++) {
-            $this->tmdbService->getPopularMovies($page);
+            // Randomly select a term for each page
+            $term = $popularTerms[array_rand($popularTerms)];
+            $this->movieService->searchMovies($term, $page);
             $this->output->progressAdvance();
             sleep(1); // Add delay to avoid rate limits
         }
@@ -92,7 +97,7 @@ class PrefetchMovies extends Command
         $this->output->progressStart($pages);
         
         for ($page = 1; $page <= $pages; $page++) {
-            $this->tmdbService->getTopRatedMovies($page);
+            $this->movieService->getTopRatedMovies($page);
             $this->output->progressAdvance();
             sleep(1); // Add delay to avoid rate limits
         }

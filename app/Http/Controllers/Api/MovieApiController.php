@@ -4,28 +4,22 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+use App\Services\TmdbService;
 
 class MovieApiController extends Controller
 {
     /**
-     * The TMDB API URL
+     * The OMDB service
      */
-    protected $apiUrl;
+    protected $movieService;
     
     /**
-     * The TMDB API key
+     * Constructor to initialize API service
      */
-    protected $apiKey;
-    
-    /**
-     * Constructor to initialize API details
-     */
-    public function __construct()
+    public function __construct(TmdbService $movieService)
     {
-        $this->apiUrl = env('TMDB_API_URL', 'https://api.themoviedb.org/3');
-        $this->apiKey = env('TMDB_API_KEY');
+        $this->movieService = $movieService;
     }
 
     /**
@@ -37,16 +31,8 @@ class MovieApiController extends Controller
     {
         // Cache for 12 hours (43200 seconds)
         $movies = Cache::remember('api_popular_movies', 43200, function () {
-            $response = Http::get($this->apiUrl . '/movie/popular', [
-                'api_key' => $this->apiKey,
-                'page' => 1,
-            ]);
-            
-            if ($response->successful()) {
-                return $response->json()['results'];
-            }
-            
-            return [];
+            $response = $this->movieService->getPopularMovies();
+            return $response['results'] ?? [];
         });
         
         return response()->json($movies);
@@ -61,18 +47,34 @@ class MovieApiController extends Controller
     {
         // Cache for 12 hours (43200 seconds)
         $movies = Cache::remember('api_top_rated_movies', 43200, function () {
-            $response = Http::get($this->apiUrl . '/movie/top_rated', [
-                'api_key' => $this->apiKey,
-                'page' => 1,
-            ]);
-            
-            if ($response->successful()) {
-                return $response->json()['results'];
-            }
-            
-            return [];
+            $response = $this->movieService->getTopRatedMovies();
+            return $response['results'] ?? [];
         });
         
         return response()->json($movies);
+    }
+    
+    /**
+     * Search for movies
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function search(Request $request)
+    {
+        $query = $request->input('query');
+        $page = $request->input('page', 1);
+        
+        if (empty($query)) {
+            return response()->json(['error' => 'Query parameter is required'], 400);
+        }
+        
+        // Cache for 6 hours (21600 seconds)
+        $results = Cache::remember('api_search_' . md5($query . '_' . $page), 21600, function () use ($query, $page) {
+            $response = $this->movieService->searchMovies($query, $page);
+            return $response['results'] ?? [];
+        });
+        
+        return response()->json($results);
     }
 }

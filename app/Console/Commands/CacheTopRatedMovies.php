@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
+use App\Services\TmdbService;
 
 class CacheTopRatedMovies extends Command
 {
@@ -13,24 +13,28 @@ class CacheTopRatedMovies extends Command
      *
      * @var string
      */
-    protected $signature = 'movies:cache-top-rated';
+    protected $signature = 'movies:cache-top-rated {--force : Force cache refresh}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Cache top rated movies from TMDB API';
+    protected $description = 'Cache top rated movies from OMDB API';
 
     /**
-     * The TMDB API URL
+     * The movie service
      */
-    protected $apiUrl;
-    
+    protected $movieService;
+
     /**
-     * The TMDB API key
+     * Create a new command instance.
      */
-    protected $apiKey;
+    public function __construct(TmdbService $movieService)
+    {
+        parent::__construct();
+        $this->movieService = $movieService;
+    }
 
     /**
      * Execute the console command.
@@ -39,75 +43,57 @@ class CacheTopRatedMovies extends Command
     {
         $this->info('Starting to cache top rated movies...');
         
-        $this->apiUrl = env('TMDB_API_URL', 'https://api.themoviedb.org/3');
-        $this->apiKey = env('TMDB_API_KEY');
+        $cacheKey = 'top_rated_movies';
         
-        if (empty($this->apiKey)) {
-            $this->error('TMDB API key not found. Please set TMDB_API_KEY in your .env file.');
-            return 1;
+        // Force cache refresh if requested
+        if ($this->option('force')) {
+            $this->info('Forcing cache refresh...');
+            Cache::forget($cacheKey);
         }
         
-        $movies = [];
-        $this->info('Fetching top rated movies from TMDB...');
-        
-        // Get top rated movies from TMDB
-        $response = Http::get($this->apiUrl . '/movie/top_rated', [
-            'api_key' => $this->apiKey,
-            'page' => 1,
-        ]);
-        
-        if ($response->successful()) {
-            $results = $response->json()['results'];
+        try {
+            // Get top rated movies response
+            $response = $this->movieService->getTopRatedMovies();
+            $movies = $response['results'] ?? [];
             
-            // Process first 8 movies to get director information
-            $this->output->progressStart(8);
+            if (empty($movies)) {
+                $this->error('No top rated movies returned from OMDB API.');
+                return 1;
+            }
+            
+            // Process first 8 movies to make sure we have all details
+            $this->output->progressStart(min(8, count($movies)));
+            $processedMovies = [];
             $count = 0;
             
-            foreach ($results as $movie) {
+            foreach ($movies as $movie) {
                 if ($count >= 8) break; // Only process first 8 movies
                 
-                $details = $this->getMovieDetails($movie['id']);
-                
-                // Extract directors
-                $directors = [];
-                if (isset($details['credits']['crew'])) {
-                    foreach ($details['credits']['crew'] as $crew) {
-                        if ($crew['job'] === 'Director') {
-                            $directors[] = $crew['name'];
-                        }
-                    }
+                // Movies from topRated should already have full details
+                // but let's ensure they have directors and cast
+                if (!isset($movie['directors']) || empty($movie['directors'])) {
+                    $details = $this->movieService->getMovieDetails($movie['id']);
+                    $movie = array_merge($movie, $details);
                 }
                 
-                $movie['directors'] = $directors;
-                $movies[] = $movie;
+                $processedMovies[] = $movie;
                 $count++;
                 
                 $this->output->progressAdvance();
             }
             
             $this->output->progressFinish();
-        } else {
-            $this->error("Failed to fetch top rated movies.");
-            $this->error($response->body());
+            
+            // Store in cache for one day (could be shorter during transition)
+            Cache::put($cacheKey, $processedMovies, now()->addMinutes(1440));
+            
+            $this->info('Successfully cached ' . count($processedMovies) . ' top rated movies from OMDB API.');
+            $this->info('First movie in cache: ' . ($processedMovies[0]['title'] ?? 'Unknown'));
+            
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("Failed to fetch top rated movies: " . $e->getMessage());
             return 1;
         }
-        
-        // Store in cache for one week
-        Cache::put('top_rated_movies', $movies, now()->addMinutes(10080));
-        
-        $this->info('Successfully cached ' . count($movies) . ' top rated movies for one week.');
-        
-        return 0;
-    }
-    
-    /**
-     * Get detailed information for a specific movie
-     */
-    protected function getMovieDetails($movieId)
-    {
-        return Http::get($this->apiUrl . '/movie/' . $movieId, [
-            'api_key' => $this->apiKey,
-            'append_to_response' => 'credits,videos',
-        ])->json();
     }
 }

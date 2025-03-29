@@ -4,28 +4,22 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use App\Services\TmdbService;
 
 class SitemapController extends Controller
 {
     /**
-     * The TMDB API URL
+     * The movie service
      */
-    protected $apiUrl;
+    protected $movieService;
     
     /**
-     * The TMDB API key
+     * Constructor to initialize the service
      */
-    protected $apiKey;
-    
-    /**
-     * Constructor to initialize API details
-     */
-    public function __construct()
+    public function __construct(TmdbService $movieService)
     {
-        $this->apiUrl = env('TMDB_API_URL', 'https://api.themoviedb.org/3');
-        $this->apiKey = env('TMDB_API_KEY');
+        $this->movieService = $movieService;
     }
 
     /**
@@ -62,7 +56,7 @@ class SitemapController extends Controller
             '1.0'
         );
         
-        // Add popular movies
+        // Add popular movies - using pre-defined terms for OMDB
         $popularMovies = $this->getPopularMovies();
         foreach ($popularMovies as $movie) {
             $sitemap .= $this->createUrlEntry(
@@ -86,8 +80,6 @@ class SitemapController extends Controller
                 );
             }
         }
-        
-        // Note: We're not adding any search pages or search queries to the sitemap
         
         $sitemap .= '</urlset>';
         
@@ -114,79 +106,46 @@ class SitemapController extends Controller
     }
     
     /**
-     * Get popular movies from TMDB API
+     * Get popular movies from OMDB API
      * 
      * @param int $limit
      * @return array
      */
-    protected function getPopularMovies($limit = 100)
+    protected function getPopularMovies($limit = 40)
     {
+        // Popular search terms for OMDB
+        $terms = ['action', 'comedy', 'drama', 'sci-fi', 'thriller'];
         $movies = [];
-        $page = 1;
-        $maxPages = 5; // Limit to 5 pages (100 movies)
         
-        while (count($movies) < $limit && $page <= $maxPages) {
-            $response = Http::get($this->apiUrl . '/movie/popular', [
-                'api_key' => $this->apiKey,
-                'page' => $page,
-            ]);
+        foreach ($terms as $term) {
+            if (count($movies) >= $limit) {
+                break;
+            }
             
-            if ($response->successful()) {
-                $results = $response->json()['results'];
-                foreach ($results as $movie) {
-                    // Include all movies, including TV Movies
+            $response = $this->movieService->searchMovies($term, 1);
+            if (isset($response['results']) && is_array($response['results'])) {
+                foreach ($response['results'] as $movie) {
                     $movies[] = $movie;
                     if (count($movies) >= $limit) {
                         break;
                     }
                 }
-            } else {
-                // Break on API error
-                break;
             }
-            
-            $page++;
         }
         
         return $movies;
     }
     
     /**
-     * Get top rated movies from TMDB API
+     * Get top rated movies from OMDB API
      * 
      * @param int $limit
      * @return array
      */
-    protected function getTopRatedMovies($limit = 50)
+    protected function getTopRatedMovies($limit = 20)
     {
-        $movies = [];
-        $page = 1;
-        $maxPages = 3; // Limit to 3 pages (60 movies)
-        
-        while (count($movies) < $limit && $page <= $maxPages) {
-            $response = Http::get($this->apiUrl . '/movie/top_rated', [
-                'api_key' => $this->apiKey,
-                'page' => $page,
-            ]);
-            
-            if ($response->successful()) {
-                $results = $response->json()['results'];
-                foreach ($results as $movie) {
-                    // Include all movies, including TV Movies
-                    $movies[] = $movie;
-                    if (count($movies) >= $limit) {
-                        break;
-                    }
-                }
-            } else {
-                // Break on API error
-                break;
-            }
-            
-            $page++;
-        }
-        
-        return $movies;
+        $response = $this->movieService->getTopRatedMovies();
+        return array_slice($response['results'] ?? [], 0, $limit);
     }
     
     /**
@@ -206,4 +165,3 @@ class SitemapController extends Controller
         
         return false;
     }
-}

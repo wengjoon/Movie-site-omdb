@@ -23,28 +23,42 @@ class SeoHelper
     }
     
     /**
-     * Get movie page title
+     * Get movie page title - adjusted for OMDB data format
      * 
      * @param array $movie
      * @return string
      */
     public static function movieTitle($movie)
     {
-        $title = $movie['title'] ?? 'Movie';
+        $title = $movie['title'] ?? $movie['Title'] ?? 'Movie';
         return sprintf(config('seo.movie_title'), $title);
     }
     
     /**
-     * Get movie meta description
+     * Get movie meta description - adjusted for OMDB data format
      * 
      * @param array $movie
      * @return string
      */
     public static function movieDescription($movie)
     {
-        $title = $movie['title'] ?? 'Movie';
-        $year = isset($movie['release_date']) ? substr($movie['release_date'], 0, 4) : '';
-        $overview = isset($movie['overview']) ? self::truncate($movie['overview'], 150) : '';
+        $title = $movie['title'] ?? $movie['Title'] ?? 'Movie';
+        
+        // Extract year from release_date or Year field
+        $year = '';
+        if (isset($movie['release_date'])) {
+            $year = substr($movie['release_date'], 0, 4);
+        } elseif (isset($movie['Year'])) {
+            $year = $movie['Year'];
+        }
+        
+        // Extract overview/plot
+        $overview = '';
+        if (isset($movie['overview']) && !empty($movie['overview'])) {
+            $overview = self::truncate($movie['overview'], 150);
+        } elseif (isset($movie['Plot']) && !empty($movie['Plot'])) {
+            $overview = self::truncate($movie['Plot'], 150);
+        }
         
         return sprintf(config('seo.movie_description'), $title, $year, $overview);
     }
@@ -83,24 +97,32 @@ class SeoHelper
     }
     
     /**
-     * Get Open Graph image URL
+     * Get Open Graph image URL - adjusted for OMDB poster format
      * 
      * @param string|null $image
      * @return string
      */
     public static function ogImage($image = null)
     {
+        if ($image && strpos($image, 'http') === 0) {
+            return $image; // OMDB gives full URLs
+        }
+        
         return asset($image ?? config('seo.default_og_image'));
     }
     
     /**
-     * Get Twitter image URL
+     * Get Twitter image URL - adjusted for OMDB poster format
      * 
      * @param string|null $image
      * @return string
      */
     public static function twitterImage($image = null)
     {
+        if ($image && strpos($image, 'http') === 0) {
+            return $image; // OMDB gives full URLs
+        }
+        
         return asset($image ?? config('seo.default_twitter_image'));
     }
     
@@ -130,28 +152,47 @@ class SeoHelper
     }
     
     /**
-     * Generate JSON-LD schema markup for a movie
+     * Generate JSON-LD schema markup for a movie - adjusted for OMDB data format
      * 
      * @param array $movie
      * @return string
      */
     public static function movieSchema($movie)
     {
+        // Get title from either TMDB or OMDB format
+        $title = $movie['title'] ?? $movie['Title'] ?? '';
+        
+        // Get description from overview or Plot
+        $description = '';
+        if (isset($movie['overview']) && !empty($movie['overview'])) {
+            $description = $movie['overview'];
+        } elseif (isset($movie['Plot']) && $movie['Plot'] !== 'N/A') {
+            $description = $movie['Plot'];
+        } else {
+            $description = 'Watch ' . $title . ' online for free in HD quality on ' . config('seo.site_name') . '.';
+        }
+        
         $data = [
             '@context' => 'https://schema.org',
             '@type' => 'Movie',
-            'name' => $movie['title'] ?? '',
-            'description' => $movie['overview'] ?? ('Watch ' . ($movie['title'] ?? 'this movie') . ' online for free in HD quality on ' . config('seo.site_name') . '.'),
+            'name' => $title,
+            'description' => $description,
         ];
         
         // Add poster image if available
         if (!empty($movie['poster_path'])) {
             $data['image'] = 'https://image.tmdb.org/t/p/w500' . $movie['poster_path'];
+        } elseif (!empty($movie['Poster']) && $movie['Poster'] !== 'N/A') {
+            $data['image'] = $movie['Poster'];
         }
         
         // Add release date if available
         if (!empty($movie['release_date'])) {
             $data['datePublished'] = $movie['release_date'];
+        } elseif (!empty($movie['Released']) && $movie['Released'] !== 'N/A') {
+            $data['datePublished'] = $movie['Released'];
+        } elseif (!empty($movie['Year'])) {
+            $data['datePublished'] = $movie['Year'] . '-01-01';
         }
         
         // Add rating if available
@@ -163,12 +204,29 @@ class SeoHelper
                 'worstRating' => '0',
                 'ratingCount' => $movie['vote_count']
             ];
+        } elseif (isset($movie['imdbRating']) && $movie['imdbRating'] !== 'N/A' && isset($movie['imdbVotes']) && $movie['imdbVotes'] !== 'N/A') {
+            $data['aggregateRating'] = [
+                '@type' => 'AggregateRating',
+                'ratingValue' => $movie['imdbRating'],
+                'bestRating' => '10',
+                'worstRating' => '0',
+                'ratingCount' => str_replace(',', '', $movie['imdbVotes'])
+            ];
         }
         
         // Add directors if available
         if (!empty($movie['directors'])) {
             $data['director'] = [];
             foreach ($movie['directors'] as $director) {
+                $data['director'][] = [
+                    '@type' => 'Person',
+                    'name' => $director
+                ];
+            }
+        } elseif (!empty($movie['Director']) && $movie['Director'] !== 'N/A') {
+            $directors = explode(', ', $movie['Director']);
+            $data['director'] = [];
+            foreach ($directors as $director) {
                 $data['director'][] = [
                     '@type' => 'Person',
                     'name' => $director
@@ -184,6 +242,30 @@ class SeoHelper
                     '@type' => 'Person',
                     'name' => $actor
                 ];
+            }
+        } elseif (!empty($movie['Actors']) && $movie['Actors'] !== 'N/A') {
+            $actors = explode(', ', $movie['Actors']);
+            $data['actor'] = [];
+            foreach ($actors as $actor) {
+                $data['actor'][] = [
+                    '@type' => 'Person',
+                    'name' => $actor
+                ];
+            }
+        }
+        
+        // Add genre if available
+        if (!empty($movie['Genre']) && $movie['Genre'] !== 'N/A') {
+            $genres = explode(', ', $movie['Genre']);
+            $data['genre'] = $genres;
+        } elseif (isset($movie['genres']) && !empty($movie['genres'])) {
+            $data['genre'] = [];
+            foreach ($movie['genres'] as $genre) {
+                if (is_array($genre)) {
+                    $data['genre'][] = $genre['name'];
+                } else {
+                    $data['genre'][] = $genre;
+                }
             }
         }
         

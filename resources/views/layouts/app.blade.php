@@ -306,13 +306,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('movies.index') }}">Home</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ route('movies.search', ['query' => 'movie']) }}">Movies</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ route('movies.search', ['query' => 'tv show']) }}">TV Shows</a>
-                    </li>
-                </ul>
+                                    </ul>
             </div>
         </div>
     </nav>
@@ -338,12 +332,12 @@
                     </ul>
                 </div>
                 <div class="col-md-4 mb-4">
-                    <h5>Popular TV Shows</h5>
+                    <h5>Popular Movies</h5>
                     <ul class="list-unstyled">
-                        <li><a href="{{ route('movies.search', ['query' => 'friends']) }}">Friends</a></li>
-                        <li><a href="{{ route('movies.search', ['query' => 'breaking bad']) }}">Breaking Bad</a></li>
-                        <li><a href="{{ route('movies.search', ['query' => 'game of thrones']) }}">Game of Thrones</a></li>
-                        <li><a href="{{ route('movies.search', ['query' => 'stranger things']) }}">Stranger Things</a></li>
+                        <li><a href="{{ route('movies.search', ['query' => 'friends']) }}">Shawshank Redemption Movies</a></li>
+                        <li><a href="{{ route('movies.search', ['query' => 'breaking bad']) }}">The Godfather Movies</a></li>
+                        <li><a href="{{ route('movies.search', ['query' => 'game of thrones']) }}">Star Wars Movies</a></li>
+                        <li><a href="{{ route('movies.search', ['query' => 'stranger things']) }}">Good Fellas Movies</a></li>
                     </ul>
                 </div>
             </div>

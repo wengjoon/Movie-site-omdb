@@ -112,39 +112,65 @@
     @foreach($movieRows as $row)
         <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-4 mb-5">
             @foreach($row as $movie)
-                <div class="col">
-                    <div class="movie-card h-100">
-                        <a href="{{ route('movies.show', ['id' => $movie['id']]) }}" class="text-decoration-none">
-                            @if($movie['poster_path'])
-                                <img src="https://image.tmdb.org/t/p/w500{{ $movie['poster_path'] }}" class="card-img-top" alt="{{ $movie['title'] }} poster - Watch on 123 Movies Pro" loading="lazy">
-                            @else
-                                <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center">
-                                    <span class="text-light"><i class="bi bi-film" style="font-size: 3rem;"></i></span>
-                                </div>
-                            @endif
-                            <div class="card-body">
-                                <h5 class="movie-title" title="{{ $movie['title'] }}">{{ $movie['title'] }}</h5>
-                                @if(isset($movie['release_date']) && !empty($movie['release_date']))
-                                    <p class="movie-year">{{ substr($movie['release_date'], 0, 4) }}</p>
-                                @endif
-                                @if(count($movie['directors']) > 0)
-                                    <p class="movie-directors" title="Directors: {{ implode(', ', $movie['directors']) }}">
-                                        <i class="bi bi-camera-reels me-1"></i> {{ implode(', ', $movie['directors']) }}
-                                    </p>
-                                @else
-                                    <p class="movie-directors">
-                                        <i class="bi bi-camera-reels me-1"></i> Unknown director
-                                    </p>
-                                @endif
-                                <p class="movie-rating">
-                                    <i class="bi bi-star-fill me-1"></i> {{ number_format($movie['vote_average'], 1) }}/10
-                                </p>
-                            </div>
-                        </a>
+    <div class="col">
+        <div class="movie-card h-100">
+            <a href="{{ route('movies.show', ['id' => $movie['id']]) }}" class="text-decoration-none">
+                @php
+                    // Handle different poster formats (OMDB vs TMDB)
+                    $posterUrl = '';
+                    if(!empty($movie['poster_path']) && strpos($movie['poster_path'], 'http') === 0) {
+                        // OMDB full URL
+                        $posterUrl = $movie['poster_path'];
+                    } elseif(!empty($movie['poster_path'])) {
+                        // TMDB path
+                        $posterUrl = 'https://image.tmdb.org/t/p/w500' . $movie['poster_path'];
+                    } elseif(!empty($movie['Poster']) && $movie['Poster'] !== 'N/A') {
+                        // OMDB Poster field
+                        $posterUrl = $movie['Poster'];
+                    } else {
+                        // Default empty
+                        $posterUrl = '';
+                    }
+                @endphp
+                
+                @if(!empty($posterUrl))
+                    <img src="{{ $posterUrl }}" class="card-img-top" alt="{{ $movie['title'] }} poster - Watch on 123 Movies Pro" loading="lazy">
+                @else
+                    <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center">
+                        <span class="text-light"><i class="bi bi-film" style="font-size: 3rem;"></i></span>
                     </div>
+                @endif
+                <div class="card-body">
+                    <h5 class="movie-title" title="{{ $movie['title'] }}">{{ $movie['title'] }}</h5>
+                    @if(isset($movie['release_date']) && !empty($movie['release_date']))
+                        <p class="movie-year">{{ substr($movie['release_date'], 0, 4) }}</p>
+                    @elseif(isset($movie['Year']) && !empty($movie['Year']))
+                        <p class="movie-year">{{ $movie['Year'] }}</p>
+                    @endif
+                    @if(count($movie['directors'] ?? []) > 0)
+                        <p class="movie-directors" title="Directors: {{ implode(', ', $movie['directors']) }}">
+                            <i class="bi bi-camera-reels me-1"></i> {{ implode(', ', $movie['directors']) }}
+                        </p>
+                    @elseif(isset($movie['Director']) && $movie['Director'] !== 'N/A')
+                        <p class="movie-directors" title="Director: {{ $movie['Director'] }}">
+                            <i class="bi bi-camera-reels me-1"></i> {{ $movie['Director'] }}
+                        </p>
+                    @else
+                        <p class="movie-directors">
+                            <i class="bi bi-camera-reels me-1"></i> Unknown director
+                        </p>
+                    @endif
+                    <p class="movie-rating">
+                        <i class="bi bi-star-fill me-1"></i> 
+                        {{ isset($movie['vote_average']) ? number_format($movie['vote_average'], 1) : 
+                           (isset($movie['imdbRating']) ? number_format($movie['imdbRating'], 1) : 'N/A') 
+                        }}/10
+                    </p>
                 </div>
-            @endforeach
+            </a>
         </div>
+    </div>
+@endforeach        </div>
     @endforeach
 </div>
 

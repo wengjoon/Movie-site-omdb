@@ -5,26 +5,22 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use App\Services\TmdbService;
 
 class MovieController extends Controller
 {
     /**
-     * The TMDB API URL
+     * The OMDB API service
      */
-    protected $apiUrl;
+    protected $movieService;
     
     /**
-     * The TMDB API key
+     * Constructor to initialize API service
      */
-    protected $apiKey;
-    
-    /**
-     * Constructor to initialize API details
-     */
-    public function __construct()
+    public function __construct(TmdbService $movieService)
     {
-        $this->apiUrl = env('TMDB_API_URL', 'https://api.themoviedb.org/3');
-        $this->apiKey = env('TMDB_API_KEY');
+        $this->movieService = $movieService;
     }
 
     /**
@@ -34,43 +30,24 @@ class MovieController extends Controller
      */
     public function index()
     {
-        // Cache top rated movies for one week (10080 minutes)
-        $topRatedMovies = Cache::remember('top_rated_movies', 10080, function () {
-            $movies = [];
+        // Clear cache to ensure we get fresh OMDB data
+        $cacheKey = 'top_rated_movies';
+        Cache::forget($cacheKey);
+        
+        // Log that we're refreshing the cache
+        Log::info('MovieController: Refreshing top rated movies cache to pull from OMDB');
+        
+        // Cache top rated movies for a shorter time during the API transition
+        $topRatedMovies = Cache::remember($cacheKey, 1440, function () {
+            $response = $this->movieService->getTopRatedMovies();
             
-            // Get top rated movies (we'll get 8 from the first page)
-            $response = Http::get($this->apiUrl . '/movie/top_rated', [
-                'api_key' => $this->apiKey,
-                'page' => 1,
+            // Log the response for debugging
+            Log::info('MovieController: Got ' . count($response['results'] ?? []) . ' top rated movies from OMDB', [
+                'first_movie' => $response['results'][0]['title'] ?? 'None',
+                'has_poster' => isset($response['results'][0]['poster_path']) ? 'Yes' : 'No'
             ]);
             
-            if ($response->successful()) {
-                $results = $response->json()['results'];
-                
-                // Process first 8 movies to get director information
-                $count = 0;
-                foreach ($results as $movie) {
-                    if ($count >= 8) break; // Only get 8 movies
-                    
-                    $details = $this->getMovieDetails($movie['id']);
-                    
-                    // Extract directors
-                    $directors = [];
-                    if (isset($details['credits']['crew'])) {
-                        foreach ($details['credits']['crew'] as $crew) {
-                            if ($crew['job'] === 'Director') {
-                                $directors[] = $crew['name'];
-                            }
-                        }
-                    }
-                    
-                    $movie['directors'] = $directors;
-                    $movies[] = $movie;
-                    $count++;
-                }
-            }
-            
-            return $movies;
+            return $response['results'] ?? [];
         });
 
         // Split movies into rows (4 movies per row)
@@ -82,38 +59,7 @@ class MovieController extends Controller
     }
 
     /**
-     * Search for movies via the TMDB API
-     */
-    protected function searchMovies($query, $page = 1)
-    {
-        return Http::get($this->apiUrl . '/search/movie', [
-            'api_key' => $this->apiKey,
-            'query' => $query,
-            'page' => $page,
-        ])->json();
-    }
-    
-    /**
-     * Get detailed information for a specific movie
-     */
-    protected function getMovieDetails($movieId)
-{
-    $response = Http::get($this->apiUrl . '/movie/' . $movieId, [
-        'api_key' => $this->apiKey,
-        'append_to_response' => 'credits,videos',
-    ]);
-    
-    // Check if the request was successful
-    if (!$response->successful()) {
-        // Return an error structure similar to TMDB API errors
-        return ['success' => false, 'status_code' => $response->status(), 'status_message' => 'Movie not found'];
-    }
-    
-    return $response->json();
-}
-
-    /**
-     * Search for movies and display results (OPTIMIZED VERSION)
+     * Search for movies using the OMDB API
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\View\View
@@ -127,26 +73,16 @@ class MovieController extends Controller
             return redirect()->route('movies.index');
         }
 
-        // Use a different cache key for the optimized search
-        $cacheKey = 'movie_search_optimized_' . md5($query . '_' . $page);
+        // Use a cache key for the search
+        $cacheKey = 'movie_search_' . md5($query . '_' . $page);
         
         $results = Cache::remember($cacheKey, 3600, function () use ($query, $page) {
-            // Only make one API call to get search results
-            $searchResults = $this->searchMovies($query, $page);
-            
-            // Instead of fetching details for each movie, just prepare the results
-            // We'll add a placeholder for directors
-            $processedResults = [];
-            foreach ($searchResults['results'] as $movie) {
-                // Add an empty directors array to maintain compatibility with the view
-                $movie['directors'] = [];
-                $processedResults[] = $movie;
-            }
+            $searchResults = $this->movieService->searchMovies($query, $page);
             
             return [
-                'results' => $processedResults,
-                'total_pages' => $searchResults['total_pages'],
-                'current_page' => $searchResults['page'],
+                'results' => $searchResults['results'] ?? [],
+                'total_pages' => $searchResults['total_pages'] ?? 1,
+                'current_page' => $searchResults['page'] ?? $page,
                 'query' => $query,
             ];
         });
@@ -157,60 +93,33 @@ class MovieController extends Controller
     /**
      * Display the detailed information for a specific movie
      *
-     * @param  int  $id
+     * @param  string  $id
      * @return \Illuminate\View\View
      */
-    /**
- * Display the detailed information for a specific movie
- *
- * @param  int  $id
- * @return \Illuminate\View\View
- */
-public function show($id)
-{
-    $cacheKey = 'movie_details_' . $id;
-    
-    try {
-        $movie = Cache::remember($cacheKey, 3600, function () use ($id) {
-            // Get movie details from TMDB
-            $details = $this->getMovieDetails($id);
-            
-            // Immediately check if we got a valid response with a title
-            if (!isset($details['title'])) {
-                throw new \Exception('Movie not found');
-            }
-            
-            // Extract directors
-            $directors = [];
-            if (isset($details['credits']['crew'])) {
-                foreach ($details['credits']['crew'] as $crew) {
-                    if ($crew['job'] === 'Director') {
-                        $directors[] = $crew['name'];
-                    }
-                }
-            }
-            
-            // Extract cast (top 5)
-            $cast = [];
-            if (isset($details['credits']['cast'])) {
-                $castCount = min(count($details['credits']['cast']), 5);
-                for ($i = 0; $i < $castCount; $i++) {
-                    $cast[] = $details['credits']['cast'][$i]['name'];
-                }
-            }
-            
-            $details['directors'] = $directors;
-            $details['top_cast'] = $cast;
-            
-            return $details;
-        });
+    public function show($id)
+    {
+        $cacheKey = 'movie_details_' . $id;
         
-        return view('movies.show', ['movie' => $movie]);
-    } catch (\Exception $e) {
-        // Log the error
-        \Log::error('Movie not found: ' . $id . ' - ' . $e->getMessage());
-        
-        // Force a 404 response
-        abort(404);
+        try {
+            $movie = Cache::remember($cacheKey, 3600, function () use ($id) {
+                // Get movie details from OMDB
+                $details = $this->movieService->getMovieDetails($id);
+                
+                // Immediately check if we got a valid response with a title
+                if (!isset($details['title']) || $details['title'] === 'Movie not found') {
+                    throw new \Exception('Movie not found');
+                }
+                
+                return $details;
+            });
+            
+            return view('movies.show', ['movie' => $movie]);
+        } catch (\Exception $e) {
+            // Log the error
+            \Log::error('Movie not found: ' . $id . ' - ' . $e->getMessage());
+            
+            // Force a 404 response
+            abort(404);
+        }
     }
-}}
+}
