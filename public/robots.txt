@@ -1,13 +1,11 @@
 User-agent: *
 Allow: /
-Disallow: /search
-Disallow: /search?query=*
 
 # Disallow duplicate content
 Disallow: /*?*&*=*
 
 # Allow sitemap
-Sitemap: https://your-domain.com/sitemap.xml
+Sitemap: https://123moviespro.cc/sitemap.xml
 
 # Crawl delay for heavy bots
 User-agent: AhrefsBot
